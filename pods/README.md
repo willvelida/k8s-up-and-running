@@ -1,5 +1,31 @@
 # Pods
 
+- [Pods in Kubernetes](#pods-in-kubernetes)
+- [The Pod Manifest](#the-pod-manifest)
+    - [Creating a Pod](#creating-a-pod)
+    - [Creating a Pod Manifest](#creating-a-pod-manifest)
+    - [Running Pods](#running-pods)
+    - [Listing Pods](#listing-pods)
+    - [Pod Details](#pod-details)
+    - [Deleting a Pod](#deleting-a-pod)
+- [Accessing Your Pod](#accessing-your-pod)
+    - [Getting more information with Logs](#getting-more-information-with-logs)
+    - [Running commands in your container with exec](#running-commands-in-your-container-with-exec)
+    - [Copying files to and from containers](#copying-files-to-and-from-containers)
+- [Health Checks](#health-checks)
+    - [Liveness Probes](#liveness-probes)
+    - [Readiness Probes](#readiness-probe)
+    - [Startup Probe](#startup-probes)
+    - [Other types of health checks](#other-types-of-health-checks)
+- [Resource Management](#resource-management)
+    - [Resource Requests](#resource-requests)
+    - [Capping Resource Usage with Limits](#capping-resource-usage-with-limits)
+- [Persisting Data with Volumes](#persisting-data-with-volumes)
+    - [Using Volumes with Pods](#using-volumes-with-pods)
+    - [Different ways of using Volumes with Pods](#different-ways-of-using-volumes-with-pods)
+- [More Information](#more-information)
+
+
 ## Pods in Kubernetes
 
 - A Pod is a collection of application containers and volumes running in the same execution environment.
@@ -16,7 +42,7 @@
 - The scheduler also uses the Kubernetes API to find Pods that haven't been scheduled onto a Node.
 - It then places the pods onto nodes depending on resources and constraints expressed in Pod manifests.
 
-## Creating a Pod.
+### Creating a Pod.
 
 We can create a Pod imperatively by running the following command:
 
@@ -36,7 +62,7 @@ And we can delete it by running the following:
 kubectl delete pods/<pod-name>
 ```
 
-## Creating a Pod manifest
+### Creating a Pod manifest
 
 - You can write Pod manifests using YAML or JSON. (YAML is preferred)
 - Pod manifests should be treated in the same way as source code, with comments to explain things to new team members.
@@ -65,7 +91,7 @@ spec:
         protocol: TCP
 ```
 
-## Running Pods
+### Running Pods
 
 To create the above Pod manifest, we can run the following:
 
@@ -73,7 +99,7 @@ To create the above Pod manifest, we can run the following:
 kubectl apply -f kuard-pod.yaml
 ```
 
-## Listing Pods
+### Listing Pods
 
 Using `kubectl`, we can list all the pods running in the cluster. So for example:
 
@@ -85,7 +111,7 @@ kuard   1/1     Running   0          5s
 
 Here, we can see the name of the Pod, as well as the number of ready containers, and the status of the Pod. We can also see how many times the Pod has restarted, and how old the Pod is.
 
-## Pod Details
+### Pod Details
 
 Kubernetes maintains numerous events about Pods that are present in the event stream, but are not attached to the Pod object.
 
@@ -159,7 +185,7 @@ Events:
   Normal  Started    3m28s  kubelet            Started container kuard
 ```
 
-## Deleting a Pod
+### Deleting a Pod
 
 When you want to delete the pod, you can delete it either by name, or through the same file that you used to create it:
 
@@ -182,7 +208,7 @@ All Pods have a termination grace period (default is 30 seconds). When a Pod is 
 - Once your pod is running, you're going to want to access it for a variety of reasons.
 - You may want to view its logs to debug a problem that you're seeing, or even execute other commands to help debug it.
 
-## Getting more information with Logs
+### Getting more information with Logs
 
 You can view the current logs from the running instance using `kubectl logs`. You can add the `-f` flag to stream the logs continuously.
 
@@ -192,7 +218,7 @@ kubectl logs kuard
 
 The `kubectl logs` command always tries to get logs from the currently running container. Adding the previous `--previous` flag will get logs from a previous instance of the container.
 
-## Running commands in your container with exec
+### Running commands in your container with exec
 
 Sometimes you need to execute commands in the context of the container itself. You can do so like this:
 
@@ -202,7 +228,7 @@ kubectl exec <pod-name> -- date
 
 You can also get an interactive session using the `-it` flag.
 
-## Copying Files to and from Containers
+### Copying Files to and from Containers
 
 - Generally, copying files into a container is an antipattern.
 - You should treat the contents of a container as immutable.
@@ -216,7 +242,7 @@ You can also get an interactive session using the `-it` flag.
 - However in most cases, this is insufficient. To address this, Kubernetes has a application *liveness check* that run application specific logic to verify that the app is not just running, but is functioning properly.
 - Since these liveness checks are application-specific, we have to define them in the Pod manifest.
 
-## Liveness Probes
+### Liveness Probes
 
 - Liveness probes are defined per container, which means each container defined inside a Pod must be checked separately.
 
@@ -256,22 +282,182 @@ spec:
 - The probe must respond within the 1-second timeout, and the HTTP status code must be equal or greater than 200 and less than 400 to be successful.
 - Kubernetes will call the probe every 10 seconds, and if it fails 3 times, the container will fail and restart.
 
-## Readiness Probe
+### Readiness Probe
 
 - Readiness describes when a container is ready to serve user requests.
 - Containers that fail readiness checks are removed from service load balancers.
 - Readiness probes are configured similarly to liveness probes.
 - Combining Readiness and Liveness probes helps ensure only healthy containers are running within the cluster.
 
-## Startup Probes
+### Startup Probes
 
 - When a Pod is started, the startup probe is run before any other probing of the Pod has started.
 - The startup probe proceeds until it either times out (the Pod restarts in this case), or it succeeds, and the liveness probe takes over.
 - Startup probes enable you to poll slowly for a slow-starting container, while also enabling a responsive liveness check once the slow-starting container has initialized.
 
-## Other types of health checks
+### Other types of health checks
 
 - In addition to HTTP, Kubernetes also supports `tcpSocket` health checks that open a TCP socket. If it succeeds, the probe succeeds.
 - This is useful for non-HTTP applications, such as Databases.
 - Kubernetes also allows `exec`probes. These execute a script or program in the context of a container.
 - These are great for custom application logic that doesn't fit neatly into a HTTP call.
+
+## Resource Management
+
+- Kubernetes also enables users to increase the overall utilization of the compute nodes that make up the cluster.
+- We measure this with the utilization metric. **Utilization is defined as the amount of a resource actively being used divided by the amount of resource that has been purchased**
+- We have to tell Kubernetes about the resources an app needs so that Kubernetes can find the optimal packing of containers onto machines.
+- Kubernetes allows users to specify two different resource metrics:
+    - **Resource requests** specify the minimum amount of a resource required to run the application.
+    - **Resource limits** specify the maximum amount of a resource that an application can consume.
+
+### Resource Requests
+
+- When a Pod requests the resources required to run its containers, Kubernetes guarantees that these resources are available to the Pod.
+- This is most commonly CPU and Memory, but can also include GPU.
+
+Here's an example of how to allocate resources to a Pod:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kuard
+  labels:
+    name: kuard
+spec:
+  containers:
+  - name: kuard
+    image: willvelida/kuard
+    livenessProbe:
+      httpGet:
+        path: /healthy
+        port: 8080
+      initialDelaySeconds: 5
+      timeoutSeconds: 1
+      periodSeconds: 10
+      failureThreshold: 3
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "500m"
+    ports:
+      - containerPort: 8080
+        name: http
+        protocol: TCP
+```
+
+> [!NOTE]
+> Resources are requested per container, not Pod. The total resources requested by the Pod is the sum of all resources needed for the Container.
+
+Requests are used when scheduling Pods to nodes. The Kubernetes scheduler will ensure that the sum of all requests of all Pods on a node does not exceed the capacity of the node.
+
+### Capping Resource Usage with Limits
+
+- In addition to setting the resources required by a Pod, you can also set a maximum on its resource usage with *limits*.
+- When we set limits on a container, the kernel is configured to ensure that consumption cannot exceed these limits.
+
+So instead of using the *requests* property in our Pod definition, we can define limits as well using the *limits* property, like so:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kuard
+  labels:
+    name: kuard
+spec:
+  containers:
+  - name: kuard
+    image: willvelida/kuard
+    livenessProbe:
+      httpGet:
+        path: /healthy
+        port: 8080
+      initialDelaySeconds: 5
+      timeoutSeconds: 1
+      periodSeconds: 10
+      failureThreshold: 3
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "500m"
+      limits:
+        memory: "256Mi"
+        cpu: "1000m"
+    ports:
+      - containerPort: 8080
+        name: http
+        protocol: TCP
+```
+
+## Persisting Data with Volumes
+
+- When a Pod is deleted or a container restarts, any and all data in the container's filesystem is also deleted.
+- This is often a good thing for stateless applications.
+- In other cases, we need access to persistent disk storage.
+
+### Using Volumes with Pods
+
+To add a volume to a Pod manifest, we need to add two things to our Pod configuration:
+
+1. `spec.volumes` - This array defines all of the volumes that may be accessed by containers in the Pod manifest. Not all containers are required to mount all volumes defined by the Pod.
+2. `volumeMounts` - This array defines the volumes that are mounted into a particular container and the path where each volume should be mounted. Two different containers in a Pod can mount the same volume at different mount paths.
+
+So with that in mind, we can define our mounts in our Pod like so:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kuard
+  labels:
+    name: kuard
+spec:
+  volumes:
+    - name: "kuard-data"
+      hostPath:
+        path: "/var/lib/kuard"
+  containers:
+  - name: kuard
+    volumeMounts:
+      - mountPath: "/data"
+        name: "kuard-data"
+    image: willvelida/kuard
+    resources:
+      limits:
+        memory: "128Mi"
+        cpu: "500m"
+    ports:
+      - containerPort: 8080
+        name: http
+        protocol: TCP
+```
+
+### Different ways of using Volumes with Pods
+
+There are a variety of ways you can use data in your application. The following are some of these ways and the recommended patterns for Kubernetes.
+
+*Communication/synchronization*
+
+- To achieve synchronization, Pods can use an `emptyDir` volume.
+- This volume to scoped to the Pod's lifespan, but can also be shared between Containers in the Pod, allowing them to communicate.
+
+*Cache*
+
+- An app may use a volume that helps performance, but not required for correct operation of it (For example, rendering images)
+- You want such a cache to survive a container restart due to a health-check failure, and thus `emptyDir` works well for the cache use case as well.
+
+*Persistent Data*
+
+- Sometimes you need a volume for truly persistent data.
+- To achieve this, Kubernetes supports a wide variety of remote network storage volumes, including NFS, Azure File and Disk etc.
+
+*Mounting the host filesystem*
+
+- Other apps don't need persistent volumes, but they do need some access to the underlying host filesystem.
+- Kubernetes supports the `hostPath` volume, which can mount arbitrary locations on the worker node into the container.
+
+## More Information
+
+- [Pods](https://kubernetes.io/docs/concepts/workloads/pods/)
