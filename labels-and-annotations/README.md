@@ -129,5 +129,5 @@ Annotations are defined in the common `metadata` section in every Kubernetes obj
 ```yaml
 metadata:
     annotations:
-        example.com/will-velida: "https://www.willvelida.com/"
+        example.com/will-velida: "https://www.example.com/willvelida"
 ```
