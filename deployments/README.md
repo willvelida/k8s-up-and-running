@@ -1,5 +1,19 @@
 # Deployments
 
+- [About Deployments](#about-deployments)
+- [Your first Deployment](#your-first-deployment)
+- [Creating Deployments](#creating-deployments)
+- [Managing Deployments](#managing-deployments)
+- [Updating Deployments](#updating-deployments)
+    - [Scaling a Deployment](#scaling-a-deployment)
+    - [Updating a container image](#updating-a-container-image)
+    - [Rollout History](#rollout-history)
+- [Deployment Strategies](#deployment-strategies)
+    - [Recreate Strategy](#recreate-strategy)
+    - [RollingUpdate Strategy](#rollingupdate-strategy)
+    - [Slowing Rollouts to Ensure Service Health](#slowing-rollouts-to-ensure-service-health)
+- [Deleting a Deployment](#deleting-a-deployment)
+
 ## About Deployments
 
 - The Deployment object exists to manage the release of new versions of your application.
@@ -270,3 +284,171 @@ $ kubectl rollout resume deployments kuard
 
 ### Rollout History
 
+Kubernetes Deployments maintain a history of rollouts, which can be useful both for understanding the previous state of the Deployment and for rolling back to a specific version.
+
+We can see the Deployment history by running:
+
+```bash
+$ kubectl rollout history deployment kuard
+
+REVISION  CHANGE-CAUSE
+1         <none>
+2         <none>
+3         Update to hello web app
+```
+
+The revision history is given in oldest to newest older. A revision number is incremented for each rollout.
+
+If we're interested in more details about a particular revision, we can add the `--revision` flag to view details about that specific revision:
+
+```bash
+$ kubectl rollout history deployment kuard --revision=3
+deployment.apps/kuard with revision #3
+Pod Template:
+  Labels:       pod-template-hash=6bddd7847b
+        run=kuard
+  Annotations:  kubernetes.io/change-cause: Update to hello web app
+  Containers:
+   kuard:
+    Image:      willvelida/hello-web-app
+    Port:       <none>
+    Host Port:  <none>
+    Limits:
+      cpu:      500m
+      memory:   128Mi
+    Environment:        <none>
+    Mounts:     <none>
+  Volumes:      <none>
+  Node-Selectors:       <none>
+  Tolerations:  <none>
+```
+
+Let's say there's an issue with a rollout, we can simply undo the rollout by running:
+
+```bash
+$ kubectl rollout undo deployments kuard
+```
+
+The undo command works regardless of the stage of the rollout (whether partially completed or fully completed).
+
+**As always, we should look to apply rollouts declaratively over imperative commands. It's better to revert the YAML file for our deployment, and apply that instead**.
+
+Additionally, we can rollout undo to a specific version like so:
+
+```bash
+$ kubectl rollout undo deployments kuard --to-revision=3
+```
+
+By default, the last 10 revisions of a Deployment are kept attached to the Deployment object itself.
+
+If we need to keep Deployment histories around for a long time, we can set a maximum history size for the Deployment revision history. We can so this using the `revisionHistoryLimit` property in our Deployment specification:
+
+```yaml
+spec:
+    revisionHistoryLimit: 14
+```
+
+## Deployment Strategies
+
+Kubernetes deployments support two different rollout strategies, `Recreate` and `RollingUpdate`:
+
+### Recreate Strategy
+
+- The `Recreate` strategy is the simpler of the two.
+- It simply updates the ReplicaSet it manages to use the new image and terminates all of the Pods associated with the Deployment.
+- The ReplicaSet notices that it no longer has any replicas and re-creates all Pods using the new image.
+- Once the Pods are re-created, they are running the new version.
+
+While this strategy is fast and simple, it will result in downtime.
+
+This strategy should only be used for test Deployments where a Service downtime is acceptable.
+
+### RollingUpdate Strategy
+
+- The `RollingUpdate` strategy is the generally preferable strategy for any user-facing service.
+- While it is slower than `Recreate`, it is more sophisticated and robust.
+- Using `RollingUpdate`, you can roll out a new version of your service while it is still receiving user traffic, without any downtime.
+
+
+`RollingUpdate` strategy works by updating a few Pods at a time, moving incrementally until all of the Pods are running the new version of your software.
+
+### Managing multiple versions of your service
+
+- This means that for a while, both the new and old services will receive requests and send traffic.
+- It's critical that each version of your software, and each of its clients, is capable of talking interchangeably with both a slightly older and newer version of your software.
+
+### Configuring a rolling update
+
+`RollingUpdate` is a fairly generic strategy
+
+- It can be used to update a variety of applications in a variety of settings.
+- You can tune `RollingUpdate` to suit our needs.
+- There are two parameters that we can use to tune the rolling update behavior: `maxUnavailable` and `maxSurge`
+
+`maxUnavailable`
+
+- This sets the maximum number of Pods that can be unavailable during a rolling update.
+- We can set it to an absolute number, or to a percentage.
+- Using a percentage is a good approach for most services, since the value is correctly applied regardless of the desired number of replicas in the Deployment.
+
+`maxSurge`
+
+- This controls how many extra resources can be created to achieve a rollout.
+- Imagine we have a service of 10 replicas, and we set the `maxUnavailable` to 0 and `maxSurge` to 20%.
+- The first thing the rollout will do is scale the new ReplicaSet up by 2 replicas, for a total of 12 (120%) in the service.
+- It will then scale the old ReplicaSet down to 8 replicas (for a total of 10) - so 8 old and 2 new in the service.
+- This process proceeds until the rollout is complete.
+- At any time, the capacity of the service is guaranteed to be at least 100% and the maximum extra resources used for the rollout are limited to an additional 20% of all resources.
+
+## Slowing Rollouts to Ensure Service Health
+
+Staged rollouts are meant to ensure that the rollout results in a healthy, stable service running the new software version.
+
+To do this, the Deployment controller always waits until a Pod reports that it is ready before moving on to update the next Pod.
+
+> [!NOTE]
+> The Deployment controller examines the Pod's status as determined by its readiness checks. Readiness checks are part of the Pod's health checks. If you want to use Deployments to reliably roll out your software, you *have* to specify readiness health checks for the containers in your Pod. Without these checks, the Deployment controller is running without knowing the Pod's status.
+
+In most real-world scenarios, we want to wait for a period of time to have confidence that the new version is operating correctly before you move on to updating the next Pod.
+
+For Deployments, this is defined by the `minReadySeconds` parameter:
+
+```yaml
+spec:
+    minReadySeconds: 60
+```
+
+This means that the Deployment must wait 60 seconds after seeing a Pod become healthy before moving on to updating the next Pod.
+
+We may also want to set a timeout that limits how long the system will wait.
+
+To do this, we can use the Deployment parameter `progressDeadlineSeconds`:
+
+```yaml
+spec:
+    progressDeadlineSeconds: 600
+```
+
+This sets the progress deadline to 10 minutes. If any particular stage in the rollout fails to progress in 10 minutes, then the Deployment is marked as failed, and all attempts to move the Deployment forward are halted.
+
+**It's important to note that this timeout is given in terms of Deployment progress, not the overall length of a Deployment**. In this context, progress is defined as any time the Deployment creates or deleted a Pod. When that happens, the timeout clock resets to zero:
+
+![Image description](https://dev-to-uploads.s3.amazonaws.com/uploads/articles/4zf1tf0bl1hoq6m7l9go.png)
+
+## Deleting a Deployment
+
+If we want to delete a Deployment, we can do it imperatively:
+
+```bash
+$ kubectl delete deployments kuard
+```
+
+You can also do it using the declarative YAML file for your Deployment:
+
+```bash
+$ kubectl delete -f kuard-deployment.yaml
+```
+
+Deleting the Deployment means deleting the entire service. It also deletes the ReplicaSets it manages, and any Pods that the ReplicaSet manages.
+
+If we just want to delete the Deployment, and not everything else, we can do so by adding the `--cascade=false` flag to delete only the Deployment object.
