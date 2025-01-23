@@ -1,5 +1,15 @@
 # DaemonSets
 
+- [About DaemonSets](#about-daemonsets)
+- [DaemonSet Scheduler](#daemonset-scheduler)
+- [Limiting DaemonSets to Specific Nodes](#limiting-daemonsets-to-specific-nodes)
+    - [Adding Labels to Nodes](#adding-labels-to-nodes)
+    - [Node Selectors](#node-selectors)
+- [Updating a DaemonSet](#updating-a-daemonset)
+- [Deleting a DaemonSet](#deleting-a-daemonset)
+
+## About DaemonSets
+
 - Deployments and ReplicaSets are generally about creating a service with multiple replicas for redundancy.
 - Generally, the motivation for replicating a Pod to every node is to land some sort of agent or daemon on each node, and the Kubernetes Object for achieving this is the DaemonSet.
 - DaemonSets ensure that a copy of a Pod is running across a set of nodes in a Kubernetes cluster.
