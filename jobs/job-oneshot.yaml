@@ -1,0 +1,19 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: oneshot
+spec:
+  ttlSecondsAfterFinished: 100
+  template:
+    spec:
+      containers:
+      - name: kuard
+        image: willvelida/kuard
+        imagePullPolicy: Always
+        command: 
+          - "/kuard"
+        args:
+          - "--keygen-enable"
+          - "--keygen-exit-on-complete"
+          - "--keygen-num-to-gen=10"
+      restartPolicy: OnFailure
